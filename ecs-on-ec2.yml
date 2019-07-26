@@ -1,0 +1,361 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ECS on EC2 and ALB Create
+
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  ProjectName:
+    Default: demo-project
+    Type: String
+  KeyName:
+    Type: String
+  AMIId:
+    Description: 'aws ssm get-parameters --names /aws/service/ecs/optimized-ami/amazon-linux-2/recommended'
+    Type: String
+    Default: 'ami-04a735b489d2a0320'
+  InstanceType:
+    Type: String
+    Default: t2.micro
+  EC2RootStorage:
+    Description: Enter 8 ~ 1000
+    Type: Number
+    Default: 30
+    MinValue: '30'
+    MaxValue: '1000'
+  DBMasterName:
+    Type: String
+  DBEndPoint:
+    Type: String
+  DBNAME:
+    Type: String
+
+  #VPCID
+  VpcId:
+    Description: 'VPC ID'
+    Type: AWS::EC2::VPC::Id
+
+  #ALBSecurity Group
+  ALBSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  #ALBSubnet1
+  ALBSubnetId1:
+    Description: 'ALB Subnet 1st'
+    Type: AWS::EC2::Subnet::Id
+
+  #ALBSubnet2
+  ALBSubnetId2:
+    Description: 'ALB Subnet 2st'
+    Type: AWS::EC2::Subnet::Id
+
+  #ECSSecurity Group
+  ECSSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  #ECSSubnet1
+  ECSSubnetId1:
+    Description: 'ECS Subnet 1st'
+    Type: AWS::EC2::Subnet::Id
+
+  #ECSSubnet2
+  ECSSubnetId2:
+    Description: 'ECS Subnet 2st'
+    Type: AWS::EC2::Subnet::Id
+
+  #InternetALB
+  InternetALBName:
+    Type: String
+    Default: 'alb'
+
+  #TargetGroupName
+  TargetGroupName:
+    Type: String
+    Default: 'tg'
+
+  #ECSClusterName
+  ECSClusterName:
+    Type: String
+    Default: 'cluster'
+
+  #ECSTaskName
+  ECSTaskName:
+    Type: String
+    Default: 'task'
+
+  #ECSTaskCPUUnit
+  ECSTaskCPUUnit:
+    AllowedValues: [256, 512, 1024, 2048, 4096]
+    Type: String
+    Default: '256'
+
+  #ECSTaskMemory
+  ECSTaskMemory:
+    AllowedValues: [256, 512, 1024, 2048, 4096]
+    Type: String
+    Default: '512'
+
+  #ECSContainerName
+  ECSContainerName:
+    Type: String
+    Default: 'container'
+
+  #ECSImageName
+  ECSImageName:
+    Type: String
+    Default: 'xxxxxxxxxxxx.dkr.ecr.ap-northeast-1.amazonaws.com/kaji-test-ecr:latest'
+
+  #ECSServiceName
+  ECSServiceName:
+    Type: String
+    Default: 'service'
+
+  #ECSTaskDesiredCount
+  ECSTaskDesiredCount:
+    Type: Number
+    Default: 1
+
+Resources:
+  # ------------------------------------------------------------#
+  # Security Groups
+  # ------------------------------------------------------------#
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-AppSecurityGroup'
+      GroupDescription: !Sub '${ProjectName}-AppSecurityGroup'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 32768
+          ToPort: 60999
+          SourceSecurityGroupId: !Ref ALBSecurityGroupId
+          Description: ECSHostSecurityGroup
+
+  # ------------------------------------------------------------#
+  #  ECS Task Execution Role
+  # ------------------------------------------------------------#
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-ECSTaskExecutionRolePolicy'
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
+        - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+
+  # ------------------------------------------------------------#
+  #  ECS Role
+  # ------------------------------------------------------------#
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref ECSRole
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  # ------------------------------------------------------------#
+  # EC2 fot ECS host instances
+  # ------------------------------------------------------------#
+  ECSEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AMIId
+      IamInstanceProfile: !Ref InstanceProfile
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref AppSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp2
+            VolumeSize: !Ref EC2RootStorage
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-instance'
+        - Key: Group
+          Value: !Sub '${ProjectName}-instance'
+      UserData: !Base64
+        Fn::Sub: |
+          #!/bin/bash
+          echo "ECS_CLUSTER=${ProjectName}-${ECSClusterName}" >> /etc/ecs/ecs.config
+          sudo yum -y update
+          sudo yum install -y ruby
+          sudo yum install -y wget
+          sudo wget https://aws-codedeploy-ap-northeast-1.s3.ap-northeast-1.amazonaws.com/latest/install
+          sudo chmod +x ./install
+          sudo ./install auto
+
+  # ------------------------------------------------------------#
+  #  Target Group
+  # ------------------------------------------------------------#
+  TargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckPath: /auth/login
+      VpcId: !Ref VpcId
+      Name: !Sub '${ProjectName}-${TargetGroupName}'
+      Protocol: HTTP
+      Port: 80
+      TargetType: instance
+
+  # ------------------------------------------------------------#
+  #  Internet ALB
+  # ------------------------------------------------------------#
+  InternetALB:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Name: !Sub '${ProjectName}-${InternetALBName}'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${InternetALBName}'
+      Scheme: 'internet-facing'
+      LoadBalancerAttributes:
+        - Key: 'deletion_protection.enabled'
+          Value: false
+        - Key: 'idle_timeout.timeout_seconds'
+          Value: 60
+        # - Key: "access_logs.s3.enabled"
+        #   Value: true
+        # - Key: "access_logs.s3.bucket"
+        #   Value: !Sub "alb-log-${AWS::AccountId}"
+      SecurityGroups:
+        - !Ref ALBSecurityGroupId
+      Subnets:
+        - !Ref ALBSubnetId1
+        - !Ref ALBSubnetId2
+
+  # ------------------------------------------------------------#
+  #  ALB Listener
+  # ------------------------------------------------------------#
+  ALBListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref InternetALB
+      Port: 80
+      Protocol: HTTP
+
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 1
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /
+
+  # ------------------------------------------------------------#
+  # ECS Cluster
+  # ------------------------------------------------------------#
+  ECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: !Sub '${ProjectName}-${ECSClusterName}'
+
+  # ------------------------------------------------------------#
+  #  ECS LogGroup
+  # ------------------------------------------------------------#
+  ECSLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub '/ecs/logs/${ProjectName}-group'
+
+  # ------------------------------------------------------------#
+  #  ECS TaskDefinition
+  # ------------------------------------------------------------#
+  ECSTaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Cpu: !Ref ECSTaskCPUUnit
+      TaskRoleArn: !Ref TaskExecutionRole
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      Family: !Sub '${ProjectName}-${ECSTaskName}'
+      Memory: !Ref ECSTaskMemory
+      NetworkMode: bridge
+      RequiresCompatibilities:
+        - EC2
+
+      #ContainerDefinitions
+      ContainerDefinitions:
+        - Name: !Sub '${ProjectName}-${ECSContainerName}'
+          Image: !Ref ECSImageName
+          Environment:
+            - Name: USER_NAME
+              Value: !Ref DBMasterName
+            - Name: DB_ENDPOINT
+              Value: !Ref DBEndPoint
+            - Name: DB_NAME
+              Value: !Ref DBNAME
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ECSLogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: !Ref ProjectName
+          MemoryReservation: 128
+          PortMappings:
+            - Protocol: tcp
+              HostPort: 0
+              ContainerPort: 80
+          Secrets:
+            - Name: USER_PASS
+              ValueFrom: db_password
+
+  # ------------------------------------------------------------#
+  #  ECS Service
+  # ------------------------------------------------------------#
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: !Ref ECSTaskDesiredCount
+      LaunchType: EC2
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerPort: 80
+          ContainerName: !Sub '${ProjectName}-${ECSContainerName}'
+      ServiceName: !Sub '${ProjectName}-${ECSServiceName}'
+      TaskDefinition: !Ref ECSTaskDefinition
