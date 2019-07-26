@@ -7,7 +7,7 @@ if [ -z "$CFN_ProjectName" ]; then
   exit 1
 fi
 
-TEMPLATE_NAME=fargate-codepipeline-github
+TEMPLATE_NAME=ecs-on-ec2-codepipeline-github
 
 CFN_TEMPLATE=${TEMPLATE_NAME}.yml
 CFN_STACK_NAME=${CFN_ProjectName}-${TEMPLATE_NAME}
