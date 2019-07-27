@@ -359,3 +359,11 @@ Resources:
           ContainerName: !Sub '${ProjectName}-${ECSContainerName}'
       ServiceName: !Sub '${ProjectName}-${ECSServiceName}'
       TaskDefinition: !Ref ECSTaskDefinition
+
+# ------------------------------------------------------------#
+#  Outputs
+# ------------------------------------------------------------#
+Outputs:
+  LoadBalancerDNSName:
+    Description: The DNSName of the ALB load balancer
+    Value: !GetAtt InternetALB.DNSName

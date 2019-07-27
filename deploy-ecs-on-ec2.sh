@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source envfile2
+source envfile
 
 if [ -z "$CFN_ProjectName" ]; then
   echo "環境変数CFN_ProjectNameが設定されていません" >&2
