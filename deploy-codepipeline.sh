@@ -15,6 +15,7 @@ CFN_STACK_NAME=${CFN_ProjectName}-${TEMPLATE_NAME}
 # テンプレートの実行
 aws cloudformation deploy --stack-name ${CFN_STACK_NAME} --template-file ${CFN_TEMPLATE} \
   --parameter-overrides \
+  ProjectName=${CFN_ProjectName} \
   Cluster=${CFN_Cluster} \
   Service=${CFN_Service} \
   ContainerName=${CFN_ContainerName} \

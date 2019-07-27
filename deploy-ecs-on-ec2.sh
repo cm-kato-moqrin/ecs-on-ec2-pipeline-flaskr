@@ -17,6 +17,7 @@ aws cloudformation deploy --stack-name ${CFN_STACK_NAME} --template-file ${CFN_T
   --parameter-overrides \
   ProjectName=${CFN_ProjectName} \
   VpcId=${CFN_VpcId} \
+  MyIP=${CFN_MyIP} \
   KeyName=${CFN_KeyName} \
   ALBSubnetId1=${CFN_ALBSubnetId1} \
   ALBSubnetId2=${CFN_ALBSubnetId2} \

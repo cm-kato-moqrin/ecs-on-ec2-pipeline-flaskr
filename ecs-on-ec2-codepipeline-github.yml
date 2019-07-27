@@ -2,6 +2,9 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: CodePipeline For ECS On EC2 with GitHub
 
 Parameters:
+  ProjectName:
+    Default: demo-project
+    Type: String
   Cluster:
     Type: String
   Service:
@@ -229,7 +232,7 @@ Resources:
       DeploymentGroupName: !Sub ${Cluster}-${DeploymentGroupName}
       Ec2TagFilters:
         - Key: Group
-          Value: !Sub ${Cluster}-instance
+          Value: !Sub ${ProjectName}-instance
           Type: KEY_AND_VALUE
       ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
 
@@ -260,9 +263,9 @@ Resources:
               RunOrder: 1
               OutputArtifacts:
                 - Name: App
-        - Name: SubDeploy
+        - Name: AppDeploy
           Actions:
-            - Name: SubDeploy
+            - Name: Copy
               InputArtifacts:
                 - Name: App
               ActionTypeId:

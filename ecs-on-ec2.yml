@@ -10,6 +10,9 @@ Parameters:
     Type: String
   KeyName:
     Type: String
+  MyIP:
+    Type: String
+    Description: Enter Public IP ex.[1.2.3.4/32]
   AMIId:
     Description: 'aws ssm get-parameters --names /aws/service/ecs/optimized-ami/amazon-linux-2/recommended'
     Type: String
@@ -131,6 +134,21 @@ Resources:
           ToPort: 60999
           SourceSecurityGroupId: !Ref ALBSecurityGroupId
           Description: ECSHostSecurityGroup
+  MaintenanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-MaintenanceSecurityGroup'
+      GroupDescription: !Sub '${ProjectName}-MaintenanceSecurityGroup'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref MyIP
+          Description: SSH From MyIP
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-MaintenanceSecurityGroup'
 
   # ------------------------------------------------------------#
   #  ECS Task Execution Role
@@ -168,6 +186,22 @@ Resources:
               Service: ec2.amazonaws.com
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+
+  # CodeDeployPolicy For EC2
+  RolePolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${ProjectName}-CodeDeployRolePolicy
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:Get*
+              - s3:List*
+            Resource: '*'
+      Roles:
+        - !Ref ECSRole
+
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
@@ -200,6 +234,7 @@ Resources:
       KeyName: !Ref KeyName
       SecurityGroupIds:
         - !Ref AppSecurityGroup
+        - !Ref MaintenanceSecurityGroup
       BlockDeviceMappings:
         - DeviceName: /dev/xvda
           Ebs:
